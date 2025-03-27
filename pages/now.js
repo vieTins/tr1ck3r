@@ -141,7 +141,7 @@ export default function Now(currentlyReading) {
         <div>
           <div className="flex justify-between gap-5">
             <div className="mt-2 mb-10 w-1/2 rounded-md border border-gray-600 p-1 text-sm dark:border-gray-200">
-              <span className="ml-2 font-semibold">Location:</span> <span>Ahmedabad, India</span>
+              <span className="ml-2 font-semibold">Location:</span> <span>Da Nang , VietNam</span>
               <br />
               <span className="ml-2 font-semibold">Weather:</span>{' '}
               <span>
@@ -211,7 +211,7 @@ export default function Now(currentlyReading) {
           &#126;&#126;&#126;
         </div>
         {/* Work */}
-        <div className="pb-4">
+        {/* <div className="pb-4">
           <p>
             I work as a Data Engineer at{' '}
             <Link
@@ -252,10 +252,10 @@ export default function Now(currentlyReading) {
         </div>
         <div className="justify-center text-center text-2xl font-medium text-gray-200 dark:text-gray-600">
           &#126;&#126;&#126;
-        </div>
+        </div> */}
 
         {/* Personal life */}
-        <div className="pt-6">
+        {/* <div className="pt-6">
           <p>
             I've been slowly building this website, trying to share interesting things with anyone
             who wants to read it.{' '}
@@ -288,7 +288,7 @@ export default function Now(currentlyReading) {
             nownownow.com
           </Link>
           .
-        </div>
+        </div> */}
       </div>
     </>
   )
