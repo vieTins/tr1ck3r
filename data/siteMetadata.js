@@ -1,19 +1,20 @@
 const siteMetadata = {
-  title: 'Blog | Parth Desai',
-  author: 'Parth Desai',
+  title: 'Blog | Tr1ck3r',
+  author: 'Nguyen Viet Tin',
   headerTitle: 'Mere Musings',
-  description: 'My personal blog where I share my musings',
-  snippets: 'Reuseable code snippets collected by Parth',
+  description: 'My personal blog where I share my writeups and musings',
+  snippets: 'Reuseable code snippets collected by Trick3r',
   language: 'en-us',
   theme: 'system', // system, dark or light
   siteUrl: 'https://musing.vercel.app',
   siteRepo: 'https://github.com/pycoder2000/blog',
   siteLogo: '/static/images/logo.png',
   image: '/static/images/avatar.png',
+  video: '/static/images/gif.mp4',
   socialBanner: '/static/images/twitter-card.png',
-  email: 'desaiparth2000@gmail.com',
+  email: 'nviettin48@gmail.com',
   github: 'https://github.com/pycoder2000',
-  twitter: 'https://twitter.com/_ParthDesai_',
+  twitter: 'https://twitter.com/vieTin_',
   linkedin: 'https://www.linkedin.com/in/parth-desai-2bb1b0160/',
   website: 'https://parthdesai.vercel.app',
   locale: 'en-US',
@@ -46,7 +47,7 @@ const siteMetadata = {
     },
   },
   socialAccount: {
-    twitter: '_ParthDesai_',
+    twitter: '_NguyenVietTin_',
   },
 }
 

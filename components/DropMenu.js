@@ -115,42 +115,6 @@ export default function DropMenu() {
             </Menu.Item>
             <Menu.Item>
               {({ active }) => (
-                <Link href="/snippets">
-                  <a
-                    className={classNames(
-                      active
-                        ? 'bg-gray-200 text-gray-700 dark:bg-zinc-700 dark:text-gray-300'
-                        : 'bg-white text-zinc-700 hover:bg-gray-300 dark:bg-zinc-800 dark:text-gray-200 dark:hover:bg-zinc-700',
-                      'block px-4 py-2 text-sm'
-                    )}
-                  >
-                    <div className="flex flex-row">
-                      <CodeIcon className="mr-4 mt-0.5" /> Snippets
-                    </div>
-                  </a>
-                </Link>
-              )}
-            </Menu.Item>
-            <Menu.Item>
-              {({ active }) => (
-                <Link href="/projects">
-                  <a
-                    className={classNames(
-                      active
-                        ? 'bg-gray-200 text-gray-700 dark:bg-zinc-700 dark:text-gray-300'
-                        : 'bg-white text-zinc-700 hover:bg-gray-300 dark:bg-zinc-800 dark:text-gray-200 dark:hover:bg-zinc-700',
-                      'block px-4 py-2 text-sm'
-                    )}
-                  >
-                    <div className="flex flex-row">
-                      <ArchiveIcon className="mr-4 mt-0.5" /> Projects
-                    </div>
-                  </a>
-                </Link>
-              )}
-            </Menu.Item>
-            <Menu.Item>
-              {({ active }) => (
                 <Link href="/about">
                   <a
                     className={classNames(
@@ -216,24 +180,6 @@ export default function DropMenu() {
           <div className="py-1">
             <Menu.Item>
               {({ active }) => (
-                <Link href="/contact">
-                  <a
-                    className={classNames(
-                      active
-                        ? 'bg-gray-200 text-gray-700 dark:bg-zinc-700 dark:text-gray-300'
-                        : 'bg-white text-zinc-700 hover:bg-gray-300 dark:bg-zinc-800 dark:text-gray-200 dark:hover:bg-zinc-700',
-                      'block px-4 py-2 text-sm'
-                    )}
-                  >
-                    <div className="flex flex-row">
-                      <Link2Icon className="mr-4 mt-0.5" /> Contact
-                    </div>
-                  </a>
-                </Link>
-              )}
-            </Menu.Item>
-            <Menu.Item>
-              {({ active }) => (
                 <Link href="/tags">
                   <a
                     className={classNames(
@@ -252,7 +198,7 @@ export default function DropMenu() {
             </Menu.Item>
             <Menu.Item>
               {({ active }) => (
-                <Link href="/guestbook">
+                <Link href="/">
                   <a
                     className={classNames(
                       active
@@ -263,24 +209,6 @@ export default function DropMenu() {
                   >
                     <div className="flex flex-row">
                       <ChatBubbleIcon className="mr-4 mt-0.5" /> Guestbook
-                    </div>
-                  </a>
-                </Link>
-              )}
-            </Menu.Item>
-            <Menu.Item>
-              {({ active }) => (
-                <Link href="/uses">
-                  <a
-                    className={classNames(
-                      active
-                        ? 'bg-gray-200 text-gray-700 dark:bg-zinc-700 dark:text-gray-300'
-                        : 'bg-white text-zinc-700 hover:bg-gray-300 dark:bg-zinc-800 dark:text-gray-200 dark:hover:bg-zinc-700',
-                      'block px-4 py-2 text-sm'
-                    )}
-                  >
-                    <div className="flex flex-row">
-                      <LaptopIcon className="mr-4 mt-0.5" /> Uses
                     </div>
                   </a>
                 </Link>
@@ -299,24 +227,6 @@ export default function DropMenu() {
                   >
                     <div className="flex flex-row">
                       <DiscIcon className="mr-4 mt-0.5" /> Now
-                    </div>
-                  </a>
-                </Link>
-              )}
-            </Menu.Item>
-            <Menu.Item>
-              {({ active }) => (
-                <Link href="/stats">
-                  <a
-                    className={classNames(
-                      active
-                        ? 'bg-gray-200 text-gray-700 dark:bg-zinc-700 dark:text-gray-300'
-                        : 'bg-white text-zinc-700 hover:bg-gray-300 dark:bg-zinc-800 dark:text-gray-200 dark:hover:bg-zinc-700',
-                      'block px-4 py-2 text-sm'
-                    )}
-                  >
-                    <div className="flex flex-row">
-                      <BarChartIcon className="mr-4 mt-0.5" /> Stats
                     </div>
                   </a>
                 </Link>

@@ -1,13 +1,13 @@
 ---
-name: Parth Desai
+name: Nguyen Viet Tin
 avatar: /static/images/avatar.png
-occupation: Data Engineer
-company: Accenture
-email: desaiparth2000@gmail.com
-twitter: https://twitter.com/_ParthDesai_
-linkedin: https://www.linkedin.com/in/parth-desai-2bb1b0160/
-github: https://github.com/pycoder2000
-text1: I am an India based Data Engineer with a bachelors in Computer Science. I am passionate about Data Science and Automation. I am also fascinated with Mathematics and wish to make a career out of it someday.
+occupation: CyberSecurity Student
+company: VKU
+email: nviettin48@gmail.com
+twitter: https://x.com/vieTin_
+linkedin: https://www.linkedin.com/in/viet-tin-nguyen-0b4196329/
+github: https://github.com/vieTins
+text1: I am a cyber security student at a school in Da Nang Vietnam. I am passionate about research and exploration in the field of digital forensics. My target is DFIR, and also SOC.
 text2:
 text3:
 ---
